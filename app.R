@@ -7,28 +7,33 @@
 #    http://shiny.rstudio.com/
 #    http://graphs.chesno.org/
 
-library(dplyr)
-library(tidyr)
-library(networkD3)
-library(igraph)
-library(stringr)
-library(readr)
 
+library(tidyverse)
+
+library(stringr)
+
+library(igraph)
+library(networkD3)
 library(shiny)
 library(shinythemes)
 
+load("IA_x_y3_2021-06-22.Rda")
+load("list_initiators_acts_2021-06-23.Rda")
 source("functions_shiny.R")
 
-load("IA_x_y3.Rda")
-load("list_initiators_acts.Rda")
 
-
+# ---- Ui ####
 # Define UI for application that draws a histogram
 ui <- fluidPage(tags$head(includeHTML(("google-analytics.html"))),
+                
+                # Мало б побороти greying out
+                tags$style(type="text/css",
+                           ".recalculating {opacity: 1.0;}"
+                ),
+                
+                
                 titlePanel("Як нардепи Ради-9 подають разом закони"),   
 
-
-                
                  # tabPanel-1 ####
                  tabPanel(title = "Прийняті закони",
                           br(),
@@ -37,8 +42,8 @@ ui <- fluidPage(tags$head(includeHTML(("google-analytics.html"))),
                                   sliderInput("bills_number",
                                               "Кількість спільноподаних законів",
                                               min = 1,
-                                              max = 20,
-                                              value = 10),
+                                              max = 21,
+                                              value = 15),
                                   checkboxGroupInput("factions",
                                                      label = "Обрати фракцію",
                                                      # 
@@ -51,15 +56,16 @@ ui <- fluidPage(tags$head(includeHTML(("google-analytics.html"))),
                                                      choices = unique(list_initiators_acts$hidden_groups),
                                                      selected = unique(list_initiators_acts$hidden_groups)),
                                   
-                                  checkboxGroupInput("komitet",
+                                  checkboxGroupInput("department_k", 
                                                      label = "За членством у комітетах",
                                                      #
-                                                     choices = unique(list_initiators_acts$komitet),
-                                                     selected = unique(list_initiators_acts$komitet))
+                                                     choices = unique(list_initiators_acts$department_k),
+                                                     selected = unique(list_initiators_acts$department_k))
                                   
                                   
                               ), # sidebarPanel
                               
+                              # Tabs menu ####
                               mainPanel(
                                   tabsetPanel(type = "tabs",
                                               tabPanel("За фракціями",
@@ -74,13 +80,27 @@ ui <- fluidPage(tags$head(includeHTML(("google-analytics.html"))),
                                               
                                               tabPanel("Неформальні групи",
                                                        br(),
-                                                       forceNetworkOutput("network_bills_hidden_groups"))
-                                  )
+                                                       forceNetworkOutput("network_bills_hidden_groups")
+                                                       ),
+                                              
+                                              tabPanel("Методологія",
+                                                       br(),
+                                                       p("Неформальні групи ми взяли із серії публікацій Української Правди"),
+                                                       
+                                                       a(href = "https://www.pravda.com.ua/articles/2021/02/18/7283826/",
+                                                         "Хмільний кардинал Ілля Павлюк: дружба із Зеленським і вплив на 'Слугу народу'",
+                                                         target = "_blank"),
+                                                       br(),
+                                                       br(),
+                                                       a(href = "https://www.pravda.com.ua/articles/2021/03/4/7285446/",
+                                                         "Бе!команда. Скільки депутатів Коломойського залишилось у 'Слузі народу'",
+                                                         target = "_blank")
+                                              )
+                                              
+                                  ) # tabsetPanel
                               ) # mainPanel
                           ) # sidebarLayout
-                 ), # tabPanel
-                 tabPanel(title = "Методологія"),
-                 
+                 ) # tabPanel
 ) # navbarPage 
 
 
@@ -88,7 +108,7 @@ ui <- fluidPage(tags$head(includeHTML(("google-analytics.html"))),
 server <- function(input, output) {
 
     
-    # output-1 ####
+    # graph f-1 ####
     output$network_bills <- renderForceNetwork({
         
         mps_force_network(
@@ -98,13 +118,14 @@ server <- function(input, output) {
             filter(
                 list_initiators_acts,
                 list_initiators_acts$factions %in% input$factions & 
-                    list_initiators_acts$komitet %in% input$komitet & 
+                    list_initiators_acts$department_k %in% input$department_k & 
                     list_initiators_acts$hidden_groups %in% input$hidden_groups
                 
             )
         ) # Nodes
     })
-    # output-2 ####
+    
+    # graph f-2 hidden ####
     output$network_bills_hidden_groups <- renderForceNetwork({
         
         mps_force_network_hidden_groups(
@@ -114,13 +135,13 @@ server <- function(input, output) {
             filter(
                 list_initiators_acts,
                 list_initiators_acts$factions %in% input$factions & 
-                    list_initiators_acts$komitet %in% input$komitet & 
+                    list_initiators_acts$department_k %in% input$department_k & 
                     list_initiators_acts$hidden_groups %in% input$hidden_groups
                 
             )
         ) # Nodes
     })
-    # output-3 Komitet ####
+    # graph f-3 department_k ####
     output$network_bills_komitet <- renderForceNetwork({
         
         mps_force_network_komitet(
@@ -130,7 +151,7 @@ server <- function(input, output) {
             filter(
                 list_initiators_acts,
                 list_initiators_acts$factions %in% input$factions & 
-                    list_initiators_acts$komitet %in% input$komitet & 
+                    list_initiators_acts$department_k %in% input$department_k & 
                     list_initiators_acts$hidden_groups %in% input$hidden_groups
                 
             )

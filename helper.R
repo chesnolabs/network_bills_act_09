@@ -1,6 +1,7 @@
-# Download factions of Rada-9  ####
 # Файл для оновлення проекту вручну
+# Допоміжні дані для дашборду shiny
 
+# Download the factions and groups of Rada-9  ####
 
 get_factions_open <- function(){
   posts <- read_csv("https://data.rada.gov.ua/ogd/mps/skl9/mp-posts_ids.csv")
@@ -31,7 +32,7 @@ get_factions_open <- function(){
                              `Група "ДОВІРА"`= "ДОВІРА"))%>%
     mutate(rada_id=as.character(rada_id)) %>% 
     mutate(rada_id=recode(rada_id, 
-                          "208"="438"))%>% # Можливо тимчасово, бо не встигли змінити айдішник Радіної
+                          "208|438"="438"))%>% # Можливо тимчасово, бо не встигли змінити айдішник Радіної
     mutate(date_end = ifelse(is.na(date_end), "", date_end))%>% # Replace NA with a blank
     mutate(region_name = ifelse(is.na(region_name), "", region_name)) # Replace NA with a blank
   
@@ -40,19 +41,19 @@ get_factions_open <- function(){
 
 factions_09 <- get_factions_open()
 
+# Членство в комітетах і фракціях ####
+# Об'єднати з фракціями і групами Ради-9
 
-# Членство в комітетах ####
+factions_09_k <- factions_09 %>% 
+  left_join(membership_k_short, by=c("fullname"="full_name_k"))%>% # membership_k_short у файлі helper_komitety.R 
+  filter(date_end=="")%>% 
+  mutate(department_k = ifelse(is.na(department_k), "Не є членами комітету", department_k))
 
-komit_members <- read.csv2("komit_members_04_02_2021.csv") %>% 
-  mutate(full_name=str_squish(full_name),
-         komitet=str_squish(komitet)) %>% 
-  left_join(factions_09, by=c("full_name"="fullname")) %>% 
-  select(-position, -rada_id, -id)
 
 # Скорочення назв комітетів ####
 
-komit_members <- komit_members %>%  # 
-  mutate(komitet = recode(komitet, 
+komit_members <- factions_09_k %>%  # 
+  mutate(department_k = recode(department_k, 
                           "Комітет з питань прав людини, деокупації та реінтеграції тимчасово окупованих територій у Донецькій, Луганській областях та Автономної Республіки Крим, міста Севастополя, національних меншин і міжнаціональних відносин" = "З прав людини і деокупації",
                           "Комітет з питань організації державної влади, місцевого самоврядування, регіонального розвитку та містобудування" = "Держвлади і самоврядування",
                           "Комітет з питань Регламенту, депутатської етики та організації роботи Верховної Ради України" = "Регламентний комітет",
@@ -77,16 +78,7 @@ komit_members <- komit_members %>%  #
                           "Комітет з питань молоді і спорту"="Молоді та спорту")
   )
 
-#head(komit_members,2)
-
-# Комітет з питань інтеграції України до Європейського Союзу
-
-# 1. Вантажимо дані для обробки ####
-
-# Законопроекти Ради-9, усі ####
-# https://data.rada.gov.ua/open/data/bills_main-skl9
-bills_main_skl9 <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_main-skl9.csv", 
-                            fileEncoding = "UTF-8")
+# Вантажимо дані по ЗП ВРУ ####
 
 # Головні виконавці ####
 bills_executives <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_executives-skl9.csv", 
@@ -94,10 +86,17 @@ bills_executives <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_execut
   filter(type=="mainExecutive") %>%
   select(bill_id, department)
 
+# Законопроекти Ради-9, усі ####
+# https://data.rada.gov.ua/open/data/bills_main-skl9
+bills_main_skl9 <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_main-skl9.csv", 
+                            fileEncoding = "UTF-8") %>% 
+  left_join(bills_executives)
+
+
 # Ініціатори законопроектів ####
 bills_initiators <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initiators-skl9.csv",
                              fileEncoding = "UTF-8")%>%
-  left_join(factions_09, by=c("person"="fullname"))     # Приєднуємо чинні фракції нардепів
+  left_join(komit_members, by=c("person"="fullname"))     # Приєднуємо чинні фракції нардепів
 
 
 # Чинні закони  ####
@@ -108,7 +107,7 @@ bills_acts09 <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_acts-skl9.
   left_join(bills_initiators, by=c("bill_id"="bill_id"))
 
 
-# 2. Ініціатори актів ####
+# 1  -------- Ініціатори актів ####
 
 list_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initiators-skl9.csv",
                                  fileEncoding = "UTF-8")%>%
@@ -117,18 +116,13 @@ list_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_in
   select(person, bill_id)%>%
   left_join(bills_main_skl9, by=c("bill_id"="bill_id")) %>% 
   filter(currentPhase_title=="Закон підписано") %>% 
-  left_join(komit_members, by=c("person"="full_name"))%>%
+  left_join(komit_members, by=c("person"="fullname"))%>%
   filter(date_end =="")%>% 
-  group_by(person, factions, komitet) %>%   # group_by(person, bill_id)%>%
+  group_by(person, factions, department_k, position_k) %>%   # Or group_by(person, bill_id)%>%
   summarise(weight_name=n()) %>%
-  #tibble::rowid_to_column("Id") %>% 
   ungroup() # Скільки разів був ініціатором законопроектів
 
 
-#rename(Label=person) %>% 
-#tibble::rowid_to_column("Id") 
-#class(list_initiators_acts)
-#head(list_initiators_acts,2)
 
 #  Hidden groupes to the list of initiators ####
 # https://www.pravda.com.ua/articles/2021/02/18/7283826/
@@ -193,15 +187,12 @@ list_initiators_acts <- mutate(list_initiators_acts,
 
 head(list_initiators_acts,2)
 
-# 
+# Save nodes ####
+dir.create("data_network")
 
-save(list_initiators_acts, file =  "list_initiators_acts.Rda")
+save(list_initiators_acts, file = paste0("list_initiators_acts_", Sys.Date(), ".Rda"))
 
-
-dir.create("data_network/acts")
-
-write.csv(list_initiators_acts, file=paste0("data_network/acts/list_initiators_nodes_acts_", Sys.Date(), ".csv"))
-
+write.csv(list_initiators_acts, file=paste0("/list_initiators_nodes_acts_", Sys.Date(), ".csv"))
 
 
 # Завантажуємо ініціаторів проектів законів/актів ####
@@ -212,7 +203,7 @@ x_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initi
   filter(type=="official")%>%
   left_join(bills_main_skl9, by=c("bill_id"="bill_id"))%>%
   filter(currentPhase_title=="Закон підписано") %>% 
-  left_join(factions_09, by=c("person"="fullname"))%>%
+  left_join(komit_members, by=c("person"="fullname"))%>%
   filter(date_end=="") %>% 
   select(person, bill_id)%>%
   group_by(person, bill_id)%>%
@@ -220,6 +211,7 @@ x_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initi
          bill_id_x=bill_id)
 
 head(x_initiators_acts,2)
+
 #  Завантажуємо ініціаторів проектів законів/актів
 
 y_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initiators-skl9.csv",
@@ -228,7 +220,7 @@ y_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initi
   filter(type=="official")%>%
   left_join(bills_main_skl9, by=c("bill_id"="bill_id"))%>%
   filter(currentPhase_title=="Закон підписано") %>%
-  left_join(factions_09, by=c("person"="fullname"))%>%
+  left_join(komit_members, by=c("person"="fullname"))%>%
   filter(date_end=="") %>% 
   select(person, bill_id)%>%
   group_by(person, bill_id)%>%
@@ -236,11 +228,9 @@ y_initiators_acts <- read.csv("https://data.rada.gov.ua/ogd/zpr/skl9/bills_initi
          bill_id_y=bill_id)
 
 head(y_initiators_acts,2)
-# Джойними ініціаторів двох датасетів
-# Тут утворюються пари, які найбільше одне з одним пов"язані по кількості законопроектів
 
 # Type 1 #### 
-# Треба вибрати щось одне 1 чи 2
+
 initiators_acts_x_y <- x_initiators_acts%>%
   inner_join(y_initiators_acts, by=c("bill_id_x"="bill_id_y"))%>% # Retain only rows in both sets
   filter(person_x != person_y)%>%                                 # Відкидаємо повторювання
@@ -251,91 +241,101 @@ initiators_acts_x_y <- x_initiators_acts%>%
   )) %>% 
   group_by(pair) %>% 
   mutate(order = seq_along(pair))%>%
-  filter(order == 1) %>% # 
-  #ungroup()%>%           # Є якась проблема у декількох ЗП з подвоєнням ініціаторів, тому треба відсіяти все, що більше 1
+  filter(order == 1) %>% # # Є якась проблема у декількох ЗП з подвоєнням ініціаторів, тому треба відсіяти все, що більше 1
   left_join(list_initiators_acts, 
             by=c("person_x"="person"))#%>%                       # Додаємо ініціаторів для створення колонок від/фром
-#select(-faction, -n)%>%
-#dplyr::rename(from=Id,
-#             weight_name_x=weight_name) # Створюємо частину еджес
 
 head(initiators_acts_x_y,2)
-# Type 2 #### 
-# Треба вибрати щось одне 1 чи 2
-# 
-# initiators_bills_x_y <- x_initiators_bills%>%
-#   inner_join(y_initiators_bills, by=c("bill_id_x"="bill_id_y"))%>%
-#   filter(person_x != person_y)%>% 
-#   group_by(person_x, person_y, bill_id_x) %>%  # Тут додаткове групування по біллс, окрім імен
-#   count()%>%
-#   filter(n==1)%>% # Є якась проблема у декількох законопроектах з подвоєнням ініціаторів, тому треба відсіяти все, що більше 1
-#   left_join(list_initiators, 
-#             by=c("person_x"="person"))%>% # Додаємо ініціаторів для створення колонок від/фром
-#   #select(-faction, -n)%>%
-#   rename(from=id)%>% # Створюємо частину еджес
-#   rename(weight_name_x=weight_name)
 
 
 # Крок ####
 initiators_acts_x_y3 <- initiators_acts_x_y%>%
-  #select(-faction, -komitet, hidden_groups)%>%
-  left_join(list_initiators_acts, by=c("person_y"="person")) %>% # Знову додаємо ініціаторів до попереднього датасету
-  #select(-faction)%>%
-  ungroup()#%>%
-#rename(to=Id)%>%  # Створюємо частинку еджес до/ту
-#rename(weight_name_y=weight_name)
+  # Знову додаємо ініціаторів до попереднього датасету
+  left_join(list_initiators_acts, by=c("person_y"="person")) %>% 
+  ungroup()
 
 head(initiators_acts_x_y3,1)
 
 
-# Для побудови мережі
-
+# 2 -------- Edges основний датасет ####
 IA_x_y3 <- initiators_acts_x_y3 %>% 
   select(1:3)
 
-save(IA_x_y3, file =  "IA_x_y3.Rda")
-load("IA_x_y3.Rda")
+# Зберігаємо наш один із основних файлів у форматі .Rda
+save(IA_x_y3, file = paste0("IA_x_y3_", Sys.Date(), ".Rda"))
+
+#load(paste0("IA_x_y3_", Sys.Date(), ".Rda"))
 #head(IA_x_y3,2)
 
-# Фінальний датасет із даними для Edges
-initiators_acts_x_y4 <- initiators_acts_x_y3%>%
-  select(from, to, n)%>% # Вибираємо це, якщо треба надалі записати файл edges_for_gephy
-  #select(person_x, person_y, n)%>% #
-  rename(Weight=n) # Для Гефі має бути "вага", а "н"
 
+# Скоротити ПІБи у nodes and edges ####
 
-# Для гефі ####
-edges_for_gephy_acts <- initiators_acts_x_y4%>%
-  rename(Source=from, Target=to, Value=Weight)
-
-dir.create("data_network")
-dir.create("data_network/acts")
-
-# Save network data ####
-
-# Зберегти дані для подального використання в програмі ####
-shortened_list_initiators <- list_initiators_acts %>% 
+short_nodes <- list_initiators_acts %>% 
   separate(person, c("name", "surname"), sep=" ")%>%
   unite("full_name", name, surname, sep=" ")
 
 
-short_LI <- shortened_list_initiators %>%
-  select(1:3)
+short_edges <- IA_x_y3 %>% 
+  separate(person_x, c("name_x", "surname_x"), sep=" ")%>%
+  unite("full_name_x", name_x, surname_x, sep=" ") %>% 
+  
+  separate(person_y, c("name_y", "surname_y"), sep=" ")%>%
+  unite("full_name_y", name_y, surname_y, sep=" ") %>% 
+  arrange(desc(n))
 
 
-# Or here you can find short names of MPs 
-write.csv(shortened_list_initiators, file = paste0("data_network/acts/nodes_bills_short_", Sys.Date(), ".csv"))
+# Data For Gephi ####
+
+library(igraph)
+g <- graph_from_data_frame(short_edges, directed=FALSE, vertices=short_nodes)
+
+network <- igraph_to_networkD3(g, group = vertex_attr(g, "factions", index = V(g)))
+
+network$nodes$department <- vertex_attr(g, "department_k")
+network$nodes$hidden_groups <- vertex_attr(g, "hidden_groups")
+network$nodes$weight_name <- short_nodes$weight_name
+
+write.csv(network$links, file = paste0("data_network/gephi_edges_act_bills_", Sys.Date(), ".csv"))
+write.csv(network$nodes, file = paste0("data_network/gephi_nodes_act_bills_", Sys.Date(), ".csv"))
 
 
-write.csv(edges_for_gephy_acts, file = paste0("data_network/acts/edges_bills_acts_", Sys.Date(), ".csv"))
-write.csv(list_initiators_acts, file = paste0("data_network/acts/nodes_bills_acts_", Sys.Date(), ".csv"))
-
-
-# Interactive network ####
+# Static network ####
 library(igraph)
 library(ggraph)
 
-# Create an igraph object with attributes directly from dataframes
 
+# *** Degree ####
+degree(g)
+
+max(degree(g))
+
+# *** Closeness ####
+closeness(g)
+max(closeness(g))
+
+1/(closeness(g) * 15)
+
+mm <- 1/(closeness(g) * (vcount(g)-1))
+
+mm <- as.data.frame(mm)
+
+V(g)
+
+vcount(g) # кількість вузлів
+
+E(g)
+
+ecount(g)
+
+rr <- betweenness(g)
+
+g$betw <- betweenness(g)
+
+
+max(betweenness(g))
+
+# Нормальний графік
+plot(g, vertex.size = closeness(g) * 1000,
+     main = "Closeness")
 
 
